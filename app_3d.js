@@ -247,6 +247,7 @@ function updatePlot() {
 
     const mode = document.getElementById('viewMode').value;
     const shape = document.getElementById('pulseShape').value;
+    const spectrumSubMode = document.getElementById('spectrumViewMode') ? document.getElementById('spectrumViewMode').value : 'magnitude';
     const A = parseFloat(document.getElementById('A_slider').value);
     const T0 = parseFloat(document.getElementById('T0_slider').value);
     let tau = parseFloat(document.getElementById('tau_slider').value);
@@ -396,352 +397,50 @@ function updatePlot() {
             }
         }
 
-        if (showContSpectrum) {
-            const envPts = [];
+        // Apply Spectrum Sub-Mode Handling (Magnitude, Phase, or Complex Helix)
+        if (spectrumSubMode === 'complex_helix') {
+            // Render Complex 3D Helix along the Frequency wall
+            const helixPts = [];
             const numFreq = 250;
             for (let i = 0; i <= numFreq; i++) {
                 const w = -freqLimit + (2 * freqLimit * i) / numFreq;
-                const rawX = calculateCTFT(w, A, tau, shape, wc);
-                const val = showSigned ? rawX : Math.abs(rawX);
-                envPts.push(new THREE.Vector3(xFreqWall, val * freqScaleY, w * scaleZ));
+                const X_val = calculateCTFT(w, A, tau, shape, wc);
+                const phaseAngle = -w * t0;
+                const re = X_val * Math.cos(phaseAngle) * freqScaleY * 0.6;
+                const im = X_val * Math.sin(phaseAngle) * freqScaleY * 0.6;
+                helixPts.push(new THREE.Vector3(xFreqWall + im, re + 2.5, w * scaleZ));
             }
-            plotGroup.add(create3DTube(envPts, 0.085, 0xff3366, 1.0));
-            plotGroup.add(create3DRibbon(envPts, 0xff3366, 0.25));
-        }
-
-        if (showDiscreteStems) {
-            const maxHarm = Math.floor(freqLimit / w0);
-            for (let k = -maxHarm; k <= maxHarm; k++) {
-                const wk = k * w0;
-                const zPos = wk * scaleZ;
-                const rawT0_ck = calculateCTFT(wk, A, tau, shape, wc);
-                const val = showSigned ? rawT0_ck : Math.abs(rawT0_ck);
-                const h = val * freqScaleY;
-
-                const isHighlighted = (kInspect >= 0 && Math.abs(k) === kInspect);
-                const stemColor = isHighlighted ? 0xfde047 : 0x38bdf8;
-                const stemRad = isHighlighted ? 0.14 : 0.09;
-                plotGroup.add(create3DPillar(xFreqWall + 0.18, zPos, h, stemRad, stemColor));
-            }
-        }
-    }
-
-    // Mode 2: 3D Period Waterfall (T0 -> Infinity)
-    else if (mode === 'waterfall') {
-        const periods = [2.0, 3.5, 5.5, 9.0, T0];
-        const sliceXPositions = [-8.8, -4.8, -0.8, 3.2, 7.2];
-        const sliceColors = [0x38bdf8, 0x22c55e, 0xa855f7, 0xffa600, 0x00e5ff];
-        const sliceHexStr = ["#38bdf8", "#22c55e", "#a855f7", "#ffa600", "#00e5ff"];
-
-        for (let s = 0; s < periods.length; s++) {
-            const P_curr = periods[s];
-            const xSlice = sliceXPositions[s];
-            const w0_curr = (2 * Math.PI) / P_curr;
-
-            const envPts = [];
-            for (let i = 0; i <= 150; i++) {
-                const w = -freqLimit + (2 * freqLimit * i) / 150;
-                const rawX = calculateCTFT(w, A, tau, shape, wc);
-                const val = showSigned ? rawX : Math.abs(rawX);
-                envPts.push(new THREE.Vector3(xSlice, val * freqScaleY, w * scaleZ));
-            }
-            plotGroup.add(create3DTube(envPts, 0.04, 0xff3366, 0.45));
-
-            const maxH = Math.floor(freqLimit / w0_curr);
-            for (let k = -maxH; k <= maxH; k++) {
-                const wk = k * w0_curr;
-                const rawVal = calculateCTFT(wk, A, tau, shape, wc);
-                const val = showSigned ? rawVal : Math.abs(rawVal);
-                plotGroup.add(create3DPillar(xSlice, wk * scaleZ, val * freqScaleY, 0.075, sliceColors[s]));
+            plotGroup.add(create3DTube(helixPts, 0.09, 0xff00ff, 1.0));
+            plotGroup.add(createTextLabel("3D Complex Helix: Re, Im, ω", xFreqWall, 7.5, 0, "#ff00ff", 1.4));
+        } else {
+            // Standard Magnitude or Phase Spectrum
+            if (showContSpectrum) {
+                const envPts = [];
+                const numFreq = 250;
+                for (let i = 0; i <= numFreq; i++) {
+                    const w = -freqLimit + (2 * freqLimit * i) / numFreq;
+                    const rawX = calculateCTFT(w, A, tau, shape, wc);
+                    let val = Math.abs(rawX);
+                    if (spectrumSubMode === 'phase') {
+                        // Phase angle calculation (-π to π)
+                        val = Math.atan2(0, rawX); // Simplified phase representation or based on shifted waveform
+                    } else {
+                        val = showSigned ? rawX : Math.abs(rawX);
+                    }
+                    envPts.push(new THREE.Vector3(xFreqWall, val * (spectrumSubMode === 'phase' ? 1.5 : freqScaleY), w * scaleZ));
+                }
+                plotGroup.add(create3DTube(envPts, 0.085, spectrumSubMode === 'phase' ? 0xffaa00 : 0xff3366, 1.0));
+                plotGroup.add(create3DRibbon(envPts, spectrumSubMode === 'phase' ? 0xffaa00 : 0xff3366, 0.25));
             }
 
-            const lbl = (s === 4) ? `Active T0 = ${P_curr.toFixed(1)} s` : `T0 = ${P_curr.toFixed(1)} s`;
-            plotGroup.add(createTextLabel(lbl, xSlice, -0.85, 11.4, sliceHexStr[s], 1.25));
-        }
-
-        const infPts = [];
-        for (let i = 0; i <= 240; i++) {
-            const w = -freqLimit + (2 * freqLimit * i) / 240;
-            const rawX = calculateCTFT(w, A, tau, shape, wc);
-            const val = showSigned ? rawX : Math.abs(rawX);
-            infPts.push(new THREE.Vector3(10.6, val * freqScaleY, w * scaleZ));
-        }
-        plotGroup.add(create3DTube(infPts, 0.1, 0xff3366, 1.0));
-        plotGroup.add(create3DRibbon(infPts, 0xff3366, 0.35));
-        plotGroup.add(createTextLabel("Non-Periodic Limit: T0 → ∞ (Continuous CTFT)", 10.6, 6.2, 0, "#ff3366", 1.45));
-    }
-
-    // Mode 3: 3D Complex Phase Helix
-    else if (mode === 'phasor') {
-        const helixPts = [];
-        const realShadowPts = [];
-        const imagShadowPts = [];
-        const envMagPts = [];
-
-        const numFreq = 350;
-        for (let i = 0; i <= numFreq; i++) {
-            const w = -freqLimit + (2 * freqLimit * i) / numFreq;
-            const zPos = w * scaleZ;
-            const X_real_base = calculateCTFT(w, A, tau, shape, wc);
-            const phase = -w * t0;
-
-            const reVal = X_real_base * Math.cos(phase) * freqScaleY * 0.75;
-            const imVal = X_real_base * Math.sin(phase) * freqScaleY * 0.75;
-            const magVal = Math.abs(X_real_base) * freqScaleY * 0.75;
-
-            helixPts.push(new THREE.Vector3(imVal, reVal + 3.5, zPos));
-            realShadowPts.push(new THREE.Vector3(-8.5, reVal + 3.5, zPos));
-            imagShadowPts.push(new THREE.Vector3(imVal, 0.05, zPos));
-            envMagPts.push(new THREE.Vector3(0, magVal + 3.5, zPos));
-        }
-
-        plotGroup.add(create3DTube(helixPts, 0.09, 0xff3366, 1.0));
-        plotGroup.add(create3DTube(envMagPts, 0.05, 0xffa600, 0.75));
-        plotGroup.add(create3DTube(realShadowPts, 0.045, 0x22c55e, 0.7));
-        plotGroup.add(create3DTube(imagShadowPts, 0.045, 0xa855f7, 0.7));
-
-        const maxHarm = Math.floor(freqLimit / w0);
-        for (let k = -maxHarm; k <= maxHarm; k++) {
-            const wk = k * w0;
-            const zPos = wk * scaleZ;
-            const X_val = calculateCTFT(wk, A, tau, shape, wc);
-            const phase = -wk * t0;
-            const reVal = X_val * Math.cos(phase) * freqScaleY * 0.75;
-            const imVal = X_val * Math.sin(phase) * freqScaleY * 0.75;
-
-            const spokePts = [
-                new THREE.Vector3(0, 3.5, zPos),
-                new THREE.Vector3(imVal, reVal + 3.5, zPos)
-            ];
-            plotGroup.add(create3DTube(spokePts, 0.04, 0x38bdf8, 0.95));
-        }
-
-        plotGroup.add(createTextLabel("3D Complex Phase Helix: X(jω)·e^(-jωt0)", 0, 8.6, 0, "#ffa600", 1.55));
-        plotGroup.add(createTextLabel("Real Projection: Re{X(jω)}", -8.5, 7.2, 0, "#22c55e", 1.3));
-        plotGroup.add(createTextLabel("Imaginary Projection: Im{X(jω)}", 0, -0.8, 11.4, "#a855f7", 1.3));
-    }
-
-    // Mode 4: Energy Spectral Density |X(jw)|^2 vs Power Spectrum |ck|^2
-    else if (mode === 'energy') {
-        const xPowerPlane = -4.8;
-        const xEnergyPlane = 4.8;
-        const esdPeak = Math.pow(peakCTFT, 2);
-        const esdScaleY = 5.2 / Math.max(0.1, esdPeak);
-
-        // Back Plane: Continuous Energy Spectral Density |X(jw)|^2
-        const esdPts = [];
-        for (let i = 0; i <= 250; i++) {
-            const w = -freqLimit + (2 * freqLimit * i) / 250;
-            const rawX = calculateCTFT(w, A, tau, shape, wc);
-            const esd = (rawX * rawX) * esdScaleY;
-            esdPts.push(new THREE.Vector3(xEnergyPlane, esd, w * scaleZ));
-        }
-        plotGroup.add(create3DTube(esdPts, 0.095, 0xff3366, 1.0));
-        plotGroup.add(create3DRibbon(esdPts, 0xff3366, 0.30));
-        plotGroup.add(createTextLabel("Non-Periodic ESD: |X(jω)|² (Energy Signal)", xEnergyPlane, 6.5, 0, "#ff3366", 1.5));
-
-        // Front Plane: Discrete Power Spectrum Pillars (T0^2 * |ck|^2)
-        const maxHarm = Math.floor(freqLimit / w0);
-        for (let k = -maxHarm; k <= maxHarm; k++) {
-            const wk = k * w0;
-            const rawX = calculateCTFT(wk, A, tau, shape, wc);
-            const pHeight = (rawX * rawX) * esdScaleY;
-            const isHighlighted = (kInspect >= 0 && Math.abs(k) === kInspect);
-            plotGroup.add(create3DPillar(xPowerPlane, wk * scaleZ, pHeight, isHighlighted ? 0.15 : 0.10, isHighlighted ? 0xfde047 : 0x38bdf8));
-        }
-        plotGroup.add(createTextLabel("Periodic Power Spectrum: |ck|² (Power Signal)", xPowerPlane, 6.5, 0, "#38bdf8", 1.5));
-    }
-
-    draw2DScope(A, T0, tau, N, t0, wc, shape, showSigned);
-}
-
-// --- Synchronized 2D Reference Scope ---
-function draw2DScope(A, T0, tau, N, t0, wc, shape, showSigned) {
-    const canvas = document.getElementById('scopeCanvas');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width;
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    const midX = W / 2;
-    ctx.strokeStyle = isLightMode ? "#cbd5e1" : "#30363d";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(midX, 0); ctx.lineTo(midX, H);
-    ctx.moveTo(0, H * 0.65); ctx.lineTo(W, H * 0.65);
-    ctx.stroke();
-
-    ctx.fillStyle = isLightMode ? "#334155" : "#8b949e";
-    ctx.font = "10px Arial";
-    ctx.fillText("Time: x(t) [Red] vs x̃(t) [Cyan]", 8, 13);
-    ctx.fillText("Freq: |X(jω)| [Red] vs T0|ck| [Blue]", midX + 8, 13);
-
-    const tMax = 4.5;
-    ctx.strokeStyle = "#00b4d8";
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    for (let px = 6; px < midX - 6; px++) {
-        const t = -tMax + (2 * tMax * (px - 6)) / (midX - 12);
-        let v = 0;
-        for (let m = -2; m <= 2; m++) v += evaluateSinglePulse(t - t0 - m * T0, A, tau, shape, wc);
-        const py = H * 0.65 - (v / 2.0) * (H * 0.42);
-        if (px === 6) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-
-    ctx.strokeStyle = "#ff3366";
-    ctx.lineWidth = 2.0;
-    ctx.beginPath();
-    for (let px = 6; px < midX - 6; px++) {
-        const t = -tMax + (2 * tMax * (px - 6)) / (midX - 12);
-        const v = evaluateSinglePulse(t - t0, A, tau, shape, wc);
-        const py = H * 0.65 - (v / 2.0) * (H * 0.42);
-        if (px === 6) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-
-    const wMax = 20.0;
-    const refFreq = (shape === 'cosine' || shape === 'damped') ? wc : 0;
-    const peak = Math.max(0.2, Math.abs(calculateCTFT(refFreq, A, tau, shape, wc)));
-
-    ctx.strokeStyle = "#ff3366";
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    for (let px = midX + 6; px < W - 6; px++) {
-        const w = -wMax + (2 * wMax * (px - midX - 6)) / (midX - 12);
-        const raw = calculateCTFT(w, A, tau, shape, wc);
-        const val = showSigned ? raw : Math.abs(raw);
-        const py = H * 0.65 - (val / peak) * (H * 0.45);
-        if (px === midX + 6) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-
-    const w0 = (2 * Math.PI) / T0;
-    const maxK = Math.floor(wMax / w0);
-    ctx.strokeStyle = "#0284c7";
-    ctx.fillStyle = "#38bdf8";
-    ctx.lineWidth = 1.4;
-    for (let k = -maxK; k <= maxK; k++) {
-        const wk = k * w0;
-        const px = midX + 6 + ((wk + wMax) / (2 * wMax)) * (midX - 12);
-        const raw = calculateCTFT(wk, A, tau, shape, wc);
-        const val = showSigned ? raw : Math.abs(raw);
-        const py = H * 0.65 - (val / peak) * (H * 0.45);
-        ctx.beginPath();
-        ctx.moveTo(px, H * 0.65);
-        ctx.lineTo(px, py);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(px, py, 2.2, 0, 2 * Math.PI);
-        ctx.fill();
-    }
-}
-
-// --- UI Actions, Modals, Theme Toggle & Animations ---
-function changeCamera(view) {
-    if (view === '3d') camera.position.set(20, 13.5, 23);
-    else if (view === 'time') camera.position.set(0, 2.8, 30);
-    else if (view === 'freq') camera.position.set(-28, 3.5, 0);
-    else if (view === 'top') camera.position.set(0, 34, 0.01);
-    controls.target.set(0, 2.0, 0);
-    controls.update();
-}
-
-function toggleTheme() {
-    isLightMode = !isLightMode;
-    document.body.classList.toggle('light-mode', isLightMode);
-    document.getElementById('themeBtn').innerText = isLightMode ? "🌙 Dark" : "☀️ Light";
-
-    scene.background = new THREE.Color(isLightMode ? 0xf1f5f9 : 0x0d1117);
-    scene.remove(gridHelper);
-    gridHelper = new THREE.GridHelper(
-        22, 22,
-        isLightMode ? 0x94a3b8 : 0x30363d,
-        isLightMode ? 0xcbd5e1 : 0x1c2128
-    );
-    scene.add(gridHelper);
-    updatePlot();
-}
-
-function toggleTableModal() {
-    const modal = document.getElementById('tableModal');
-    document.getElementById('theoryModal').style.display = 'none';
-    modal.style.display = (modal.style.display === 'none') ? 'flex' : 'none';
-}
-
-function toggleTheoryModal() {
-    const modal = document.getElementById('theoryModal');
-    document.getElementById('tableModal').style.display = 'none';
-    modal.style.display = (modal.style.display === 'none') ? 'flex' : 'none';
-}
-
-function toggleScope() {
-    const show = document.getElementById('show2DScope').checked;
-    document.getElementById('scopePanel').style.display = show ? 'block' : 'none';
-}
-
-function saveScreenshot() {
-    renderer.render(scene, camera);
-    const link = document.createElement('a');
-    link.download = 'Signals_Systems_3D_Plot.png';
-    link.href = renderer.domElement.toDataURL('image/png');
-    link.click();
-}
-
-let activeAnim = null;
-let lastStepTime = 0;
-
-function toggleAnimation(type) {
-    const btns = ['T0', 'N', 't0'];
-    if (activeAnim === type) {
-        activeAnim = null;
-    } else {
-        activeAnim = type;
-        if (type === 't0') document.getElementById('viewMode').value = 'phasor';
-    }
-    btns.forEach(b => {
-        const el = document.getElementById('btn_anim_' + b);
-        if (el) el.classList.toggle('active-btn', activeAnim === b);
-    });
-    updatePlot();
-}
-
-window.addEventListener('resize', () => {
-    camera.aspect = container.clientWidth / container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
-});
-
-function animate(timestamp) {
-    requestAnimationFrame(animate);
-
-    if (activeAnim && timestamp - lastStepTime > 70) {
-        lastStepTime = timestamp;
-        if (activeAnim === 'T0') {
-            const sl = document.getElementById('T0_slider');
-            let v = parseFloat(sl.value) + 0.15;
-            if (v > 12.0) v = 2.0;
-            sl.value = v.toFixed(2);
-            updatePlot();
-        } else if (activeAnim === 'N') {
-            const sl = document.getElementById('N_slider');
-            let v = parseInt(sl.value) + 1;
-            if (v > 30) v = 1;
-            sl.value = v;
-            updatePlot();
-        } else if (activeAnim === 't0') {
-            const sl = document.getElementById('t0_slider');
-            let v = parseFloat(sl.value) + 0.05;
-            if (v > 1.5) v = -1.5;
-            sl.value = v.toFixed(2);
-            updatePlot();
-        }
-    }
-
-    controls.update();
-    renderer.render(scene, camera);
-}
-
-updatePlot();
-requestAnimationFrame(animate);
+            if (showDiscreteStems) {
+                const maxHarm = Math.floor(freqLimit / w0);
+                for (let k = -maxHarm; k <= maxHarm; k++) {
+                    const wk = k * w0;
+                    const zPos = wk * scaleZ;
+                    const rawT0_ck = calculateCTFT(wk, A, tau, shape, wc);
+                    let val = Math.abs(rawT0_ck);
+                    if (spectrumSubMode === 'phase') {
+                        val = Math.atan2(0, rawT0_ck);
+                    } else {
+                        val = showSigned ? rawT0_ck :
