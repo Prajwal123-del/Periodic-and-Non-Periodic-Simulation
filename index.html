@@ -62,6 +62,16 @@
             </select>
         </div>
 
+        <!-- Spectrum View Mode Selector (Option 1 Upgrade) -->
+        <div class="control-group">
+            <span class="section-title">Spectrum View Sub-Mode</span>
+            <select id="spectrumViewMode" onchange="updatePlot()">
+                <option value="magnitude">Magnitude Spectrum (|X(k)| / |X(jω)|)</option>
+                <option value="phase">Phase Spectrum (∠X(k) / ∠X(jω))</option>
+                <option value="complex_helix">Complex 3D Helix (Re, Im, t)</option>
+            </select>
+        </div>
+
         <!-- Waveform Selector -->
         <div class="control-group">
             <span class="section-title">Signal Waveform</span>
